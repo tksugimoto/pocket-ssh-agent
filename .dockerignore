@@ -1,0 +1,5 @@
+.git
+node_modules
+dist
+pocket-ssh-agent
+pocket-ssh-agent.exe

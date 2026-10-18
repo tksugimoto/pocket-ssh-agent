@@ -1,0 +1,4 @@
+node_modules/
+/pocket-ssh-agent
+/pocket-ssh-agent.exe
+/dist/

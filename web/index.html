@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; connect-src https: http://localhost:* http://127.0.0.1:*; manifest-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#14171c">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Pocket SSH">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <title>Pocket SSH Agent</title>
+  <script src="vendor/jsqr/jsQR.js" defer></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <h1>Pocket SSH</h1>
+    <span id="conn" class="conn" hidden><span class="dot"></span><span id="conn-text"></span></span>
+  </header>
+
+  <main>
+    <section id="view-loading" class="view">
+      <p class="muted">読み込み中…</p>
+    </section>
+
+    <section id="view-unsupported" class="view" hidden>
+      <div class="card warn">
+        <h2>このブラウザは対応していません</h2>
+        <p>Ed25519 の WebCrypto が使えるブラウザ（iOS 17 以降の Safari、最新の Chrome など）で開いてください。</p>
+      </div>
+    </section>
+
+    <section id="view-pair-confirm" class="view" hidden>
+      <div class="card">
+        <h2>ペアリング</h2>
+        <p>次の PC とペアリングしますか？</p>
+        <p id="pair-host" class="pair-host mono"></p>
+        <dl class="kv">
+          <dt>PC 名</dt><dd><span id="pair-name"></span><span class="badge">PC の申告</span></dd>
+        </dl>
+        <p class="note muted">いま自分の PC で表示した QR コードから開いた場合だけ続けてください。</p>
+        <p id="pair-not-tailnet" class="note warn-text" hidden>接続先が Tailscale（*.ts.net）ではありません。自分で起動した PC であることを確認してください。</p>
+        <p class="note warn-text"><strong>ペアリングした PC は、あなたが承認すればこの鍵で GitHub などにログインできるようになります。</strong>自分の PC でなければ「やめる」を押してください。</p>
+        <div class="actions">
+          <button id="pair-cancel" class="btn secondary" type="button">やめる</button>
+          <button id="pair-ok" class="btn primary" type="button">ペアリングする</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-setup" class="view" hidden>
+      <div class="card">
+        <h2>PC とペアリング</h2>
+        <ol class="steps">
+          <li>PC で <code>pocket-ssh-agent</code> を起動します。</li>
+          <li>表示された QR コードを、下のボタンから読み取ります。</li>
+        </ol>
+        <div class="actions">
+          <button id="scan-start" class="btn primary wide" type="button">QR コードを読み取る</button>
+        </div>
+        <details class="paste">
+          <summary>リンクを貼り付けてペアリング</summary>
+          <textarea id="paste-input" rows="3" placeholder="https://…#pair=…" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+          <button id="paste-ok" class="btn secondary" type="button">読み込む</button>
+        </details>
+      </div>
+    </section>
+
+    <section id="view-scanner" class="view" hidden>
+      <div class="scanner">
+        <video id="scan-video" playsinline muted></video>
+        <div class="scan-frame"></div>
+      </div>
+      <p class="muted center">PC に表示された QR コードを枠に合わせてください</p>
+      <div class="actions">
+        <button id="scan-cancel" class="btn secondary wide" type="button">キャンセル</button>
+      </div>
+    </section>
+
+    <section id="view-main" class="view" hidden>
+      <p class="paired-to">ペアリング先: <strong id="main-pc"></strong></p>
+      <p id="multi-warn" class="card warn" hidden></p>
+      <div id="requests"></div>
+      <div id="no-requests" class="empty">
+        <p>承認待ちのリクエストはありません</p>
+        <p class="muted">PC で <code>git push</code> や <code>ssh</code> を実行すると、ここに表示されます。<br>承認するにはこの画面を開いたままにしてください。</p>
+      </div>
+    </section>
+
+    <div id="ios-warning" class="card warn" hidden>
+      <p><strong>ホーム画面に追加してから使ってください。</strong></p>
+      <p>iPhone では Safari とホーム画面のアプリで保存領域が別々です。Safari のままペアリングすると、ホーム画面のアプリからは鍵が見えません。また Safari の保存データは、しばらく開かないと消えることがあります。</p>
+      <p class="muted">共有ボタン →「ホーム画面に追加」→ 追加したアプリを開き、アプリ内で QR コードを読み取ってください。</p>
+    </div>
+
+    <section id="key-section" class="card" hidden>
+      <h2>公開鍵</h2>
+      <p class="muted">GitHub の Settings → SSH and GPG keys（または接続先サーバーの authorized_keys）に登録します。</p>
+      <pre id="pubkey" class="mono pubkey"></pre>
+      <p class="muted small">指紋: <span id="pubkey-fp" class="mono"></span></p>
+      <div class="actions">
+        <button id="pubkey-copy" class="btn secondary" type="button">コピー</button>
+      </div>
+    </section>
+
+    <details id="settings" class="card settings" hidden>
+      <summary>設定</summary>
+      <div class="actions column">
+        <button id="unpair" class="btn secondary" type="button">ペアリングを解除</button>
+        <button id="delete-key" class="btn danger" type="button">鍵を削除</button>
+      </div>
+      <p class="muted small">鍵を削除すると元に戻せません。新しい鍵を作り、GitHub などに登録し直す必要があります。</p>
+    </details>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <template id="tpl-request">
+    <article class="card request">
+      <header class="request-head">
+        <h2 class="request-title"></h2>
+        <span class="request-timer muted"></span>
+      </header>
+      <dl class="kv request-kv"></dl>
+      <p class="request-forwarded warn-text note" hidden></p>
+      <p class="request-error warn-text" hidden></p>
+      <div class="actions">
+        <button class="btn secondary deny" type="button">拒否</button>
+        <button class="btn primary approve" type="button">承認</button>
+      </div>
+    </article>
+  </template>
+</body>
+</html>

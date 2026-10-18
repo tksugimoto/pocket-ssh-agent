@@ -1,0 +1,16 @@
+{
+  "name": "pocket-ssh-agent-web",
+  "private": true,
+  "type": "module",
+  "description": "Tests for the phone PWA in web/ (no build step, no runtime dependencies).",
+  "scripts": {
+    "test": "node --test web/test/*.test.mjs",
+    "e2e": "bash scripts/e2e.sh"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "playwright": "^1.64.1"
+  }
+}
